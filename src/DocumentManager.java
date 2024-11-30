@@ -2,9 +2,12 @@ import lombok.Builder;
 import lombok.Data;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * For implement this task focus on clear code, and make this solution as simple readable as possible
@@ -17,6 +20,8 @@ import java.util.Optional;
  */
 public class DocumentManager {
 
+    private final List<Document> documents = new ArrayList<>();
+
     /**
      * Implementation of this method should upsert the document to your storage
      * And generate unique id if it does not exist, don't change [created] field
@@ -26,7 +31,17 @@ public class DocumentManager {
      */
     public Document save(Document document) {
 
-        return null;
+        if (document.getId() == null) {
+            document.setId(UUID.randomUUID().toString());
+            documents.add(document);
+        } else {
+            // update the document if already exists
+            Optional<Document> existingDocument = findById(document.getId());
+            existingDocument.ifPresent(documents::remove);
+            documents.add(document);
+        }
+
+        return document;
     }
 
     /**
@@ -36,8 +51,53 @@ public class DocumentManager {
      * @return list matched documents
      */
     public List<Document> search(SearchRequest request) {
+        if (request == null) {
+            return Collections.emptyList();
+        }
 
-        return Collections.emptyList();
+        return documents.stream()
+                .filter(doc -> findMatches(doc, request))
+                .collect(Collectors.toList());
+
+    }
+
+    public boolean findMatches(Document document, SearchRequest request) {
+        if (request.getTitlePrefixes() != null && !request.getTitlePrefixes().isEmpty()) {
+            boolean titleMatches = request.titlePrefixes.stream()
+                    .anyMatch(prefix -> document.getTitle() != null && document.getTitle().startsWith(prefix));
+
+            if (!titleMatches) return false;
+        }
+
+        if (request.getContainsContents() != null && !request.getContainsContents().isEmpty()) {
+            boolean contentMatches = request.containsContents.stream()
+                    .anyMatch(content -> document.getContent() != null && document.getContent().startsWith(content));
+
+            if (!contentMatches) return false;
+        }
+
+        if (request.getAuthorIds() != null && !request.getAuthorIds().isEmpty()) {
+            boolean authorIdMatches = request.authorIds.stream()
+                    .anyMatch(id -> document.getId() != null && document.getId().startsWith(id));
+
+            if (!authorIdMatches) return false;
+        }
+
+        if (request.getCreatedFrom() != null &&
+                document.getCreated() != null &&
+                document.getCreated().isBefore(request.getCreatedFrom())) {
+
+            return false;
+        }
+
+        if (request.getCreatedTo() != null &&
+                document.getCreated() != null &&
+                document.getCreated().isAfter(request.getCreatedTo())) {
+
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -48,7 +108,9 @@ public class DocumentManager {
      */
     public Optional<Document> findById(String id) {
 
-        return Optional.empty();
+        return documents.stream()
+                .filter(doc -> doc.getId().equals(id))
+                .findFirst();
     }
 
     @Data
